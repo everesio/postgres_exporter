@@ -1288,9 +1288,23 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 	if e.autoDiscoverDatabases {
 		dsns = e.discoverDatabaseDSNs()
 	}
+
+	log.Infof("Scraping %d DSNS", len(dsns))
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.Infof("DSNS scrape elapsed time %v", elapsed)
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(len(dsns))
 	for _, dsn := range dsns {
-		e.scrapeDSN(ch, dsn)
+		go func(dsn string) {
+			defer wg.Done()
+			e.scrapeDSN(ch, dsn)
+		}(dsn)
 	}
+	wg.Wait()
 }
 
 func (e *Exporter) discoverDatabaseDSNs() []string {
@@ -1331,6 +1345,13 @@ func (e *Exporter) discoverDatabaseDSNs() []string {
 }
 
 func (e *Exporter) scrapeDSN(ch chan<- prometheus.Metric, dsn string) {
+	log.Debugf("Scrape DSN %v", loggableDSN(dsn))
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.Infof("Scrape elapsed time %v for DSN %v", elapsed, loggableDSN(dsn))
+	}()
+
 	server, err := e.servers.GetServer(dsn)
 	if err != nil {
 		log.Errorf("Error opening connection to database (%s): %v", loggableDSN(dsn), err)
